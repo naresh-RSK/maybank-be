@@ -118,10 +118,19 @@ loginRouter.post("/post", async (req, res) => {
           message: "Invalid credentials",
         });
     }
+
+    // const result = await getPool()
+    //   .request()
+    //   .query(`SELECT * FROM T_EGL_USER_DETAILS WHERE USER_ID = '${USER_ID}' `);
+    
     const result = await getPool()
       .request()
-      .query(`SELECT * FROM T_EGL_USER_DETAILS WHERE USER_ID = '${USER_ID}' `);
-    const data = result?.recordsets[0]?.length > 0 ? result.recordsets[0] : [];
+      .query(`SELECT A.*, B.PAGE_LINK
+FROM T_EGL_USER_DETAILS A
+INNER JOIN T_EGL_USER_TYPE_WEB_PAGE_LINK B ON A.USER_TYPE = B.USER_TYPE
+WHERE A.USER_ID='${USER_ID}'`);
+const data = result?.recordsets[0]?.length > 0 ? result.recordsets[0] : [];
+    
 
     if (data?.length > 0) {
       // Check if the user is enabled
@@ -137,7 +146,7 @@ loginRouter.post("/post", async (req, res) => {
       emailDetails["EMAIL_ID"] = data?.[0].EMAIL_ID;
 
       // Handle SYSTEM ADMIN user type
-      if (data[0].USER_TYPE.toUpperCase() === "SYSTEM ADMIN") {
+      if (data[0].NEED_LDAP === "N") {
         let decodedBuffer = Buffer.from(data[0].PASSWORD, "base64");
         let decodedString = decodedBuffer?.toString("utf-8");
         console.log("System Admin password check:", decodedString === PASSWORD);
@@ -160,7 +169,7 @@ loginRouter.post("/post", async (req, res) => {
       // Handle non-SYSTEM ADMIN (LDAP authentication and OTP generation)
       if (
         data?.length > 0 &&
-        data[0].USER_TYPE.toUpperCase() !== "SYSTEM ADMIN"
+        data[0].NEED_LDAP === "Y"
       ) {
         console.log("LDAP TEST for non-SYSTEM ADMIN:", USER_ID, PASSWORD);
 
