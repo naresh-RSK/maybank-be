@@ -3,7 +3,7 @@ const adminUserRouter = express.Router();
 const { getPool } = require("../Database/db");
 const { insertQuery, convertDatesInObject } = require("../utils/insertQuery");
 const { usersAudit } = require("../utils/UsersData");
-const { FROM_EMAIL, USER_SUBJECT } = require("../utils/fromEmail");
+const { FROM_EMAIL, USER_SUBJECT, USER_APPROVE_STATUS } = require("../utils/fromEmail");
 const { transporter } = require("../utils/emailSend");
 const path = require("path");
 const fs = require("fs");
@@ -330,7 +330,7 @@ adminUserRouter.post("/user/approve", async (req, res) => {
     const mailOptions = {
       from: FROM_EMAIL,
       to: emailIds,
-      subject: USER_SUBJECT,
+      subject: USER_APPROVE_STATUS,
       html: emailTemplate, // Use the updated HTML content
       attachments: [
         {

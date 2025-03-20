@@ -73,6 +73,9 @@ companyCodeMapRouter.post("/post", async (req, res) => {
         if(String(oldCreateData[0].COMPANY_CODE_ID).toLowerCase() === "null"){
           delete oldCreateData[0].COMPANY_CODE_ID;
         }
+        if(String(oldCreateData[0].SHORTNAME).toLowerCase() === "null"){
+          delete oldCreateData[0].SHORTNAME;
+        }
         
 
         //console.log(oldCreateData, "oldCreateData");

@@ -2,12 +2,12 @@ const sql = require('mssql');
 const PropertiesReader = require('properties-reader');
 const path = require('path');
 
-// const properties = PropertiesReader(path.resolve(
-//     "..",
-//     "config",
-//     "config.properties"
-//   ));
-const properties = PropertiesReader('C:/Users/vnare/OneDrive - unisonconsultant/Desktop/New folder/config.properties');
+const properties = PropertiesReader(path.resolve(
+    "..",
+    "config",
+    "config.properties"
+  ));
+//const properties = PropertiesReader('D:config/config.properties');
 //const properties = PropertiesReader(configPath);
   
   let decodedBuffer = Buffer.from(properties.get('db.password'), "base64");
