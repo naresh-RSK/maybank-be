@@ -157,7 +157,11 @@ const data = result?.recordsets[0]?.length > 0 ? result.recordsets[0] : [];
             message: "Invalid credentials",
           });
         }
-
+        const updatedat = await getPool()
+        .request()
+        .query(
+          `UPDATE T_EGL_USER_DETAILS SET LOGIN_FLG = '${LOGIN_FLG}', LAST_LOGIN = '${LAST_LOGIN}' WHERE USER_ID = '${USER_ID}'`
+        );
         // For SYSTEM ADMIN, no need to authenticate via LDAP and no OTP generation or email
         return res.status(200).json({
           statusCode: 201,
