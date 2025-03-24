@@ -1,9 +1,14 @@
 const express = require("express");
 const adminUserRouter = express.Router();
 const { getPool } = require("../Database/db");
-const { insertQuery, convertDatesInObject } = require("../utils/insertQuery");
+const { insertQuery, updateQuery } = require("../utils/insertQuery");
 const { usersAudit } = require("../utils/UsersData");
-const { FROM_EMAIL, USER_SUBJECT, USER_APPROVE_STATUS } = require("../utils/fromEmail");
+const  removeNullProperties  =require("../utils/removeNullFromObj")
+const {
+  FROM_EMAIL,
+  USER_SUBJECT,
+  USER_APPROVE_STATUS,
+} = require("../utils/fromEmail");
 const { transporter } = require("../utils/emailSend");
 const path = require("path");
 const fs = require("fs");
@@ -35,7 +40,7 @@ adminUserRouter.get("/getIntData", async (req, res) => {
   try {
     const result = await getPool()
       .request()
-      .query("SELECT * FROM T_EGL_USER_DETAILS_INT");
+      .query("SELECT * FROM T_EGL_USER_DETAILS_INT ORDER BY AUD_ID DESC");
     res.json(result.recordset);
   } catch (err) {
     res.status(500).send(err.message);
@@ -82,137 +87,255 @@ adminUserRouter.get("/getIntData", async (req, res) => {
 //   }
 // });
 
-// 
+//
 
 adminUserRouter.post("/user/post", async (req, res) => {
-  const {reqUser, userDetails} = req.body
+  const { reqUser, userDetails } = req.body;
+  delete reqUser.fullName;
   try {
     // Check if USER_ID already exists in T_EGL_USER_DETAILS table
-    
-    
 
     // If USER_ID does not exist, proceed with inserting data into all tables
-    if (((reqUser.CREATED_BY).toUpperCase() === "SYSTEM ADMIN") && (reqUser.USER_TYPE === "USER AUTHORIZER" || reqUser.USER_TYPE === "USER ADMINISTRATOR")) {
+    if (
+      reqUser.CREATED_BY.toUpperCase() === "SYSTEMADMIN" &&
+      (reqUser.USER_TYPE === "USER AUTHORIZER" ||
+        reqUser.USER_TYPE === "USER ADMINISTRATOR")
+    ) {
       const userIdExists = await getPool()
-      .request()
-      .input('USER_ID', reqUser.USER_ID)  // Assuming USER_ID is coming from the request body
-      .query("SELECT COUNT(*) AS count FROM T_EGL_USER_DETAILS WHERE USER_ID = @USER_ID");
-
-    // If USER_ID exists, return a response with a message
-    if (userIdExists.recordset[0].count > 0) {
-      return res.status(409).json({
-        message: `${reqUser.USER_ID} already exists`
-      });
-    }
-      
-      // Insert into T_EGL_USER_DETAILS if the condition is met
-      const addUserDetailsInT = await getPool()
         .request()
-        .query(insertQuery(reqUser, "T_EGL_USER_DETAILS"));
-      
-    } else {
+        .input("USER_ID", reqUser.USER_ID) // Assuming USER_ID is coming from the request body
+        .query(
+          "SELECT COUNT(*) AS count FROM T_EGL_USER_DETAILS WHERE USER_ID = @USER_ID"
+        );
 
-      const userIdExists = await getPool()
-      .request()
-      .input('USER_ID', reqUser.USER_ID)  // Assuming USER_ID is coming from the request body
-      .query("SELECT COUNT(*) AS count FROM T_EGL_USER_DETAILS_AUD WHERE USER_ID = @USER_ID");
-
-    // If USER_ID exists, return a response with a message
-    if (userIdExists.recordset[0].count > 0) {
-      return res.status(409).json({
-        message: `${reqUser.USER_ID} already exists`
-      });
-    }
-      // Insert into T_EGL_USER_DETAILS_AUD
-      const addUserDetailsAud = await getPool()
-        .request()
-        .query(insertQuery(reqUser, "T_EGL_USER_DETAILS_AUD"));
-
-      // Get the latest AUD_ID
-      const getlatestData = await getPool()
-        .request()
-        .query("SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC");
-
-      const getAlldata = getlatestData.recordsets[0];
-      const userIntReq = {...reqUser, ...getAlldata[0]};
-
-      // Insert into T_EGL_USER_DETAILS_INT
-      const addUserDetailsInT = await getPool()
-        .request()
-        .query(insertQuery(userIntReq, "T_EGL_USER_DETAILS_INT"));
-
-      const userAuth = await getPool()
-      .request()
-      .query(
-        `SELECT EMAIL_ID FROM T_EGL_USER_DETAILS WHERE USER_TYPE = 'USER AUTHORIZER'`
-      );
-    //console.log(parameterRev.recordsets,"parameterRev")
-    const emailIds = userAuth?.recordsets
-      .flat()
-      .map((item) => item.EMAIL_ID);
-    console.log(emailIds, "emailIds");
-    const templatePath = path.resolve(
-      "..",
-      "emailTemp",
-      "userEmailTemp.html"
-    );
-    fs.readFile(templatePath, "utf-8", (err, data) => {
-      if (err) {
-        console.log(err, "fileErr");
-        return res.status(500).send("Error reading the template file");
+      // If USER_ID exists, return a response with a message
+      if (userIdExists.recordset[0].count > 0) {
+        return res.status(409).json({
+          message: `${reqUser.USER_ID} already exists`,
+        });
       }
 
-      // Replace placeholders with dynamic data
-      let emailContent = data;
-      emailContent = emailContent.replace(
-        /{{USER_ID}}/g,
-        reqUser.USER_ID
-      );
-      emailContent = emailContent.replace(
-        /{{USER_NAME}}/g,
-        reqUser.FIRST_NAME +" "+ reqUser.LAST_NAME
-      );
-      emailContent = emailContent.replace(
-        /{{DESIGNATION}}/g,
-        reqUser.DESIGNATION
-      );
-      emailContent = emailContent.replace(
-        /{{EMAIL_ID}}/g,
-        reqUser.EMAIL_ID
-      );
-      emailContent = emailContent.replace(
-        /{{DIV_DEPT_UNIT}}/g,
-        reqUser.DIV_DEPT_UNIT
-      );
-      emailContent = emailContent.replace(
-        /{{IS_ENABLED}}/g,
-        reqUser.IS_ENABLED
-      );
-      emailContent = emailContent.replace(/{{STAGE}}/g, reqUser.STAGE);
-      emailContent = emailContent.replace(
-        /{{START_DATE}}/g,
-        reqUser.START_DATE
-      );
-      emailContent = emailContent.replace(
-        /{{FROM_NAME}}/g,
-        userDetails.USERNAME
-      );
-      
-      // Send the email
-      const mailOptions = {
-        from: FROM_EMAIL,
-        to: emailIds,
-        subject: USER_SUBJECT,
-        html: emailContent, // Use the updated HTML content
-      };
+      // Insert into T_EGL_USER_DETAILS if the condition is met
+      reqUser.STAGE = "APPROVED"
+      reqUser.ACTION_COMMENTS = "Created By System Admin"
+      reqUser.UPDATED_BY = reqUser.CREATED_BY.toUpperCase()
+      reqUser.MODIFY_DATE = reqUser.CREATE_DATE
+      const insertAudit = await getPool()
+        .request()
+        .query(insertQuery(reqUser, "T_EGL_USER_DETAILS_AUD"));
+      const getlatestData = await getPool()
+        .request()
+        .query(
+          "SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC"
+        );
+      const getAlldata = getlatestData.recordsets[0];
+      const requestData = { ...reqUser, ...getAlldata[0] };
 
-      transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-          return res.status(500).send("Error sending email: " + error);
+      const addUserDetails = await getPool()
+        .request()
+        .query(insertQuery(requestData, "T_EGL_USER_DETAILS"));
+    } else {
+      if (reqUser.STAGE === "CREATED") {
+        const userIdExists = await getPool()
+          .request()
+          .input("USER_ID", reqUser.USER_ID) // Assuming USER_ID is coming from the request body
+          .query(
+            "SELECT COUNT(*) AS count FROM T_EGL_USER_DETAILS_AUD WHERE USER_ID = @USER_ID"
+          );
+
+        // If USER_ID exists, return a response with a message
+        if (userIdExists.recordset[0].count > 0) {
+          return res.status(409).json({
+            message: `${reqUser.USER_ID} already exists`,
+          });
         }
-        res.send("Email sent successfully: " + info.response);
+        // Insert into T_EGL_USER_DETAILS_AUD
+        const addUserDetailsAud = await getPool()
+          .request()
+          .query(insertQuery(reqUser, "T_EGL_USER_DETAILS_AUD"));
+
+        // Get the latest AUD_ID
+        const getlatestData = await getPool()
+          .request()
+          .query(
+            "SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC"
+          );
+
+        const getAlldata = getlatestData.recordsets[0];
+        const userIntReq = { ...reqUser, ...getAlldata[0] };
+
+        // Insert into T_EGL_USER_DETAILS_INT
+        const addUserDetailsInT = await getPool()
+          .request()
+          .query(insertQuery(userIntReq, "T_EGL_USER_DETAILS_INT"));
+      } else {
+        console.log(reqUser, "reqUser");
+        const existinguser = await getPool()
+          .request()
+          .query(
+            `SELECT * FROM T_EGL_USER_DETAILS WHERE USER_ID = '${reqUser.USER_ID}'`
+          );
+        const user = existinguser.recordsets.flat();
+        //console.log(user, "user1234");
+        if (user?.length > 0) {
+          const userOriginData = user[0];
+          // if (String(userOriginData.NEED_LDAP) === "null") {
+          //   delete userOriginData.NEED_LDAP;
+          // }
+          // if (String(userOriginData.CREATE_DATE) === "null") {
+          //   delete userOriginData.CREATE_DATE;
+          // }else{
+          //   userOriginData.CREATE_DATE = (userOriginData.CREATE_DATE).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.START_DATE) === "null"){
+          //   delete userOriginData.START_DATE
+          // }else {
+          //   userOriginData.START_DATE = (userOriginData.START_DATE).toISOString().split('T')[0]
+          // }
+          // if (String(userOriginData.MODIFY_DATE) === "null") {
+          //   delete userOriginData.MODIFY_DATE;
+          // }else{
+          //   userOriginData.MODIFY_DATE = (userOriginData.MODIFY_DATE).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.LOGIN_FLG) === "null"){
+          //   userOriginData.LOGIN_FLG ="N"
+          // }
+          // if(String(userOriginData.LAST_MAINTAINED_DATE) === "null"){
+          //   delete userOriginData.LAST_MAINTAINED_DATE
+          // }else {
+          //   userOriginData.LAST_MAINTAINED_DATE = (userOriginData.LAST_MAINTAINED_DATE).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.LAST_LOGIN) === "null"){
+          //   delete userOriginData.LAST_LOGIN
+          // }else {
+          //   userOriginData.LAST_LOGIN = (userOriginData.LAST_LOGIN).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.UPDT_DTE) === "null"){
+          //   delete userOriginData.UPDT_DTE
+          // }else {
+          //   userOriginData.UPDT_DTE = (userOriginData.UPDT_DTE).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.END_DTE) === "null"){
+          //   delete userOriginData.END_DTE
+          // }else {
+          //   userOriginData.END_DTE = (userOriginData.END_DTE).toISOString().split('T')[0]
+          // }
+          // if(String(userOriginData.INVLD_CNT) === "null"){
+          //   delete userOriginData.INVLD_CNT
+          // }
+          // if(String(userOriginData.RESET_FLG) === "null"){
+          //   userOriginData.RESET_FLG ="N"
+          // }
+          // if(String(userOriginData.DELETE_FLAG) === "null"){
+          //   userOriginData.DELETE_FLAG ="N"
+          // }
+          const requestOriginData = removeNullProperties(userOriginData)
+          delete requestOriginData.USER_KEY_OTP
+          delete requestOriginData.GENERATED_OTP
+          delete requestOriginData.REPORT_CONFIG_IT
+          delete requestOriginData.UPDT_USR
+          delete requestOriginData.AUD_ID
+          requestOriginData.STAGE = "ORIGINAL";
+          const oldRecord = await getPool()
+            .request()
+            .query(insertQuery(requestOriginData, "T_EGL_USER_DETAILS_AUD"));
+        }
+        const insertAudit = await getPool()
+          .request()
+          .query(insertQuery(reqUser, "T_EGL_USER_DETAILS_AUD"));
+        const getlatestData = await getPool()
+          .request()
+          .query(
+            "SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC"
+          );
+        const getAlldata = getlatestData.recordsets[0];
+        const sendData = { ...reqUser, ...getAlldata[0] };
+        const count = await getPool()
+          .request()
+          .query(
+            `SELECT COUNT(*) AS total FROM T_EGL_USER_DETAILS_INT WHERE USER_ID ='${reqUser.USER_ID}' `
+          );
+        if (count.recordset[0].total > 0) {
+          const addUserDetailsInT = await getPool()
+            .request()
+            .query(
+              updateQuery(
+                sendData,
+                "T_EGL_USER_DETAILS_INT",
+                "USER_ID",
+                `'${sendData.USER_ID}'`
+              )
+            );
+        } else {
+          const insertIntData = await getPool()
+            .request()
+            .query(insertQuery(sendData, "T_EGL_USER_DETAILS_INT"));
+        }
+      }
+      const userAuth = await getPool()
+        .request()
+        .query(
+          `SELECT EMAIL_ID FROM T_EGL_USER_DETAILS WHERE USER_TYPE = 'USER AUTHORIZER'`
+        );
+      //console.log(parameterRev.recordsets,"parameterRev")
+      const emailIds = userAuth?.recordsets.flat().map((item) => item.EMAIL_ID);
+      console.log(emailIds, "emailIds");
+      const templatePath = path.resolve(
+        "..",
+        "emailTemp",
+        "userEmailTemp.html"
+      );
+      fs.readFile(templatePath, "utf-8", (err, data) => {
+        if (err) {
+          console.log(err, "fileErr");
+          return res.status(500).send("Error reading the template file");
+        }
+
+        // Replace placeholders with dynamic data
+        let emailContent = data;
+        emailContent = emailContent.replace(/{{USER_ID}}/g, reqUser.USER_ID);
+        emailContent = emailContent.replace(
+          /{{USER_NAME}}/g,
+          reqUser.FIRST_NAME + " " + reqUser.LAST_NAME
+        );
+        emailContent = emailContent.replace(
+          /{{DESIGNATION}}/g,
+          reqUser.DESIGNATION
+        );
+        emailContent = emailContent.replace(/{{EMAIL_ID}}/g, reqUser.EMAIL_ID);
+        emailContent = emailContent.replace(
+          /{{DIV_DEPT_UNIT}}/g,
+          reqUser.DIV_DEPT_UNIT
+        );
+        emailContent = emailContent.replace(
+          /{{IS_ENABLED}}/g,
+          reqUser.IS_ENABLED
+        );
+        emailContent = emailContent.replace(/{{STAGE}}/g, reqUser.STAGE);
+        emailContent = emailContent.replace(
+          /{{START_DATE}}/g,
+          reqUser.START_DATE
+        );
+        emailContent = emailContent.replace(
+          /{{FROM_NAME}}/g,
+          userDetails.USERNAME
+        );
+
+        // Send the email
+        const mailOptions = {
+          from: FROM_EMAIL,
+          to: emailIds,
+          subject: USER_SUBJECT,
+          html: emailContent, // Use the updated HTML content
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            return res.status(500).send("Error sending email: " + error);
+          }
+          res.send("Email sent successfully: " + info.response);
+        });
       });
-    });
     }
 
     // Return success response
@@ -220,7 +343,6 @@ adminUserRouter.post("/user/post", async (req, res) => {
       statusCode: 201,
       message: "Data inserted successfully",
     });
-
   } catch (err) {
     console.error("Error inserting data: ", err);
     res.status(500).json({
@@ -277,23 +399,21 @@ const convertJsonToExcel = (data) => {
 };
 
 adminUserRouter.post("/user/approve", async (req, res) => {
-  const {reqData,userDetails} = req.body
+  const { reqData, userDetails } = req.body;
   // const { name, age } = req.body; // Extract data from the request body
   // const requestData = { ...usersAudit, ...req.body };
   // console.log(requestData, "requestData");
   const exelDownloadData = [];
   try {
-    const addUserDetailsInT = await getPool()
-      .request()
-      .query(
-        `DELETE FROM T_EGL_USER_DETAILS_INT WHERE USER_ID = '${reqData.USER_ID}'`
-      );
+    
     const addUserDetailsAud = await getPool()
       .request()
       .query(insertQuery(reqData, "T_EGL_USER_DETAILS_AUD"));
-      const getlatestData = await getPool()
+    const getlatestData = await getPool()
       .request()
-      .query("SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC");
+      .query(
+        "SELECT TOP 1 AUD_ID FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC"
+      );
     const getAlldata = getlatestData.recordsets[0];
 
     // let cleanedObject = Object.fromEntries(
@@ -302,25 +422,48 @@ adminUserRouter.post("/user/approve", async (req, res) => {
     //   )
     // );
     // let newObjWithCustomFormat = convertDatesInObject(cleanedObject);
-   // console.log(newObjWithCustomFormat, "newObjWithCustomFormat");
-   const userDetailsReq = {...reqData, ...getAlldata[0] }
-    const addUserDetails = await getPool()
+    // console.log(newObjWithCustomFormat, "newObjWithCustomFormat");
+    const userDetailsReq = { ...reqData, ...getAlldata[0] };
+    const count = await getPool()
+    .request()
+    .query(
+      `SELECT COUNT(*) AS total FROM T_EGL_USER_DETAILS WHERE USER_ID ='${userDetailsReq.USER_ID}' `
+    );
+    if(count.recordset[0].total > 0 && userDetailsReq.STAGE === "APPROVED") {
+      const addUserDetailsInT = await getPool()
+            .request()
+            .query(
+              updateQuery(
+                userDetailsReq,
+                "T_EGL_USER_DETAILS",
+                "USER_ID",
+                `'${userDetailsReq.USER_ID}'`
+              )
+            );
+    }else {
+      if(reqData.STAGE === "APPROVED"){
+        const addUserDetails = await getPool()
+        .request()
+        .query(insertQuery(userDetailsReq, "T_EGL_USER_DETAILS"));
+      }
+    }
+    
+      const addUserDetailsInT = await getPool()
       .request()
-      .query(insertQuery(userDetailsReq, "T_EGL_USER_DETAILS"));
+      .query(
+        `DELETE FROM T_EGL_USER_DETAILS_INT WHERE USER_ID = '${reqData.USER_ID}'`
+      );
 
-
-      const userAdmin = await getPool()
+    const userAdmin = await getPool()
       .request()
       .query(
         `SELECT EMAIL_ID FROM T_EGL_USER_DETAILS WHERE USER_TYPE = 'USER ADMINISTRATOR'`
       );
     //console.log(parameterRev.recordsets,"parameterRev")
-    const emailIds = userAdmin?.recordsets
-      .flat()
-      .map((item) => item.EMAIL_ID);
+    const emailIds = userAdmin?.recordsets.flat().map((item) => item.EMAIL_ID);
     console.log(emailIds, "emailIds");
     //const dataArray = Object.values(reqData);
-     exelDownloadData.push(reqData)
+    exelDownloadData.push(reqData);
     const excelFilePath = convertJsonToExcel(exelDownloadData);
     const emailTemplate = generateEmailHtml(
       exelDownloadData,
@@ -369,7 +512,7 @@ adminUserRouter.get("/userAllDetails", async (req, res) => {
   try {
     const result = await getPool()
       .request()
-      .query("SELECT * FROM T_EGL_USER_DETAILS");
+      .query("SELECT * FROM T_EGL_USER_DETAILS ORDER BY AUD_ID DESC");
     res.json(result.recordset);
   } catch (err) {
     res.status(500).send(err.message);
@@ -378,15 +521,14 @@ adminUserRouter.get("/userAllDetails", async (req, res) => {
 
 adminUserRouter.post("/userDetails/:id", async (req, res) => {
   try {
-    const userId = req.params.id
+    const userId = req.params.id;
     const result = await getPool()
       .request()
-      .query(`SELECT * FROM T_EGL_USER_DETAILS_AUD WHERE USER_ID ='${userId}'`);
+      .query(`SELECT * FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC WHERE USER_ID ='${userId}' `);
     res.json(result.recordset);
   } catch (err) {
     res.status(500).send(err.message);
   }
 });
-
 
 module.exports = adminUserRouter;

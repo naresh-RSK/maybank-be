@@ -26,7 +26,7 @@ const { getPool } = require('../Database/db')
 // })
 userHistoryRouter.get('/getAudData', async (req, res) => {
     try {
-        const result = await getPool().request().query('SELECT * FROM T_EGL_USER_DETAILS_AUD');
+        const result = await getPool().request().query('SELECT * FROM T_EGL_USER_DETAILS_AUD ORDER BY AUD_ID DESC');
         res.json(result.recordset);
     } catch (err) {
         res.status(500).send(err.message);
